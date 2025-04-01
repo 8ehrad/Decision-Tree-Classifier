@@ -1,0 +1,268 @@
+---
+title: "SCC.461 Final Project"
+author: "Behrad Zabihi"
+date: "2023-01-12"
+output: 
+  bookdown::pdf_document2:
+    toc: false
+bibliography: references.bib
+classoption: a4paper
+---
+
+```{r, echo=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo=FALSE) # no need to include R code in the pdf file, although the R code is still needed in THIS file
+## load your libraries here
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+```
+
+
+# Abstract
+Decision trees are one of the most successful classifiers in machine learning. They are known for their interpretability, relatively fast speed and simplicity. The aim of this assignment is to build a decision tree from scratch and compare it with the existing model implemented in Sklearn library, both in terms of machine learning aspects and computational aspects. For this aim, three different datasets with significantly different sizes are used to test both models on them. In addition to this, different sets of hyperparameters are employed to test the models' performance under different settings.
+To compare the results obtained by the two models, different statistical techniques are applied. Regression models can estimate the relation between the training time of models and given variables (e.g. sample size). Also, some graphs are shown to see how the f1-score as a measure of goodness changes with hyperparameters. Finally, t-test is applied to test if there is a significant difference between the results of the two models. 
+
+# Introduction 
+Decision tree classifier is a non parametric supervised learning method used for classification. It learns and employs a series of if/else questions to classify the data. The decision boundary is inferred from these if/else questions. \newline
+The goal in this assignment is to build a decision tree from scratch in Python [@dtscratch] and compare it in R with the decision tree implemented in _Sklearn_ library, which is a well-known library for machine learning [@scikit-learn]. This model has a list of hyperparameters that can be adjusted to gain better results. One of the main drawback of decision trees is overfitting. They can create over-complex trees that may not generalize the data well. There are multiple ways to tackle this problem, one of which is adjusting the hyperparameters in a way that tree does not overfit the data. Overfitting mainly occurs in cases where the tree expands too much to fit the training data. Therefore, there are parameters to control the degree at which the tree expands, namely **max_depth**, **min_samples_split** and **min_information_gain**. These hyperparameters are also modeled in our implementation and the effect will be compared in both decision trees. \newline 
+In addition to this, to compare the models' performance on different sample sizes different datasets are used, namely _Iris_, _Adult_ and _Wine Quality_. Iris is a small dataset with only real numbers as features, hence quite straightforward to classify. Adult dataset reports features from marital status to job status of 45 thousands Americans and the goal is to predict whether they earn more or less than 50k a year. Here, features are either integer or categorical. Categorical features like marital status are represented with strings. Hence one-hot-encoding is used to transform categorical variables into binary features. This is because categorical features are not supported in Sklearn's implementation by the time of release this report. The last dataset used in this assignment is Wine Quality. Although the features are all real numbers, but it suffers from imbalanced labels. For labels 3 and 8 there are very few examples, leading both models to predict poorly on those two classes. \newline
+Another factor that is used to test the models on is the proportion of train/test set, called **test_size**. After dividing the datasets into train and test sets, both models are trained on train set and make predictions on test set. Here, the measures of interest are **training time**, **prediction time** and machine learning aspects of the prediction, including **accuracy**, **precision**, **recall** and **f1-score**. \newline
+The results for both models are saved in an intermediate csv file. Then, statistical techniques are used to compare these results together. Given the training and prediction time for both models under different settings, a linear regression model is trained for each of these times to estimate the relation between the target value (training/prediction time for each model) and different parameters under which the experiment has taken place. As well as this, after exploring statistical techniques discussed in @islr, a t-test is conducted to see if there is a significant difference between the results obtained from both models.
+Finally, the goodness of fit in terms of f1-score is plotted based on each hyperparameter for both models.
+
+# Methodology 
+In this section, the implementation of decision tree is explained. At each step, a feature and a value for that feature is selected to split the dataset upon. This selection is based on _information gain_. The algorithm greedily searches for a pair of feature and value that gives us the highest _purity_ in that stage. Purity is the cost function in decision trees that we seek to minimize. There are two main ways to calculate purity: gini index and entropy. The formula to calculate gini index is as follows:  
+$$Gini = 1 - \sum_{i=1}^{c} P_i^2$$
+Where $P_i$ is the probability of having that class. This value ranges from 0 (a pure cut) to 0.5 (non-informative cut). \newline
+Entropy on the other hand, is a way of calculating impurity or randomness. It is defined by following equation:
+$$E(S) = \sum_{i=1}^{c}-P_i\log_{2}{P_i}$$
+Entropy ranges from 0 (pure cut) to 1 (non-informative cut). \newline
+It was said that the split at each step is based on information gain. The following formula represents this concept:
+$$InformationGain = E(d) - \sum{\frac{|s|}{|d|}E(s)}$$
+This formula is written based on entropy, however, it is also possible to use gini score. The overall process of a decision tree can be summarized as following steps: \newline
+1. Compute information gain for all features and all values.\newline
+2. Select the pair of feature and value that gives the highest information gain.\newline
+3. Repeat this process until one of the final conditions is reached. \newline
+In our implemented decision tree, there is an option to compute information gain based on either gini score or entropy (this argument is passed to the information gain function). \newline
+We use nodes to construct the decision tree. Each node has a left and a right child (which can be null if the node is a leaf), a pair of feature and value to split the data based on them, a class which is equal to one of the existing labels in the dataset if this node is a leaf (and false otherwise), and finally a depth variable that indicates the depth of the node in the tree. The decision tree itself starts with a node **root**, and has three hyperparameters: **max_depth**, **min_samples_split** and **min_information_gain**.
+Max_depth as the name suggests, refers to the maximum depth that the tree can expand to. Min_samples_split is the minimum of samples that should be available at the node in order to split it further (otherwise the expansion stops and a class is assigned to that node). Finally, if the information gain at each step is less than min_information_gain, the tree will not expand further at that step and again, a label is assigned. \newline
+The decision tree has two main methods: train and predict. However, both of them call a recursive function to start permuting the tree from the root (either at training step and forming the tree, or at prediction step and classifying test set). For training part at each step, it receives a node, a dataset (which is left to that node to be split further) and a purity function between entropy and gini. There are four conditions that will end the splitting at the given node: 1) Data at this node is pure (consists of only one class). 2) The node's depth is equal to max_depth. 3) There are less than min_samples_split cases in the data. 4) The maximum information gain is less than min_information_gain. If one of these conditions is reached, the majority class of the data is assigned to that node and the expansion of the tree stops. if it is not the case, the pair of feature and value that gives the maximum information gain is calculated and the data is split upon that. The way that maximum information gain is computed is as follows: For each feature, the unique values for that feature in the dataset is sorted. Then at each step, one of those values is chosen as pivot. Therefor, the data is divided into two groups based on whether the given feature is smaller or larger than the pivot value, and finally the information gain is computed for this split. Among all different pairs of feature and value, the one with the highest information gain is chosen. Based on this pair, the data is passed to left and right children and the same function is called on those two nodes. \newline
+On the other hand for prediction part, another recursive function is called on the root node to permute the tree. At each node, if it is a leaf, the data is labeled with the node's assigned class. Otherwise, it splits data based on the pair of feature and value that was selected during training phase. After split, the prediction continues on left and right children of the given node. \newline
+Grid search is used to test models under different scenarios [@grids]. All different values for parameters of the model is shown in Table \@ref(tab:GridSearch). Every possible combination of these values is passed to both models (our and library's implementation), and the results of both models are recorded and saved in a csv file. The results include: Training and prediction time, accuracy, precision, recall and f1-score. \newline
+It is worth mentioning that unlike library's implementation, our model can deal with symbolic features (e.g. strings). When splitting the data based on a feature and a chosen value, if the feature's type is string, it uses the dictionary ordering to decide whether a given value is less or more than the pivot value. However, since the Sklearn's decision tree could not handle categorical data, one-hot-encoding is applied to the Adult dataset before being fed to the models. This encoding also proved to decrease the training time of our model. \newline
+Finally, to plot the training and prediction time for both models with changing data sizes, different proportions from 0.1 to 1.0 of the Wine Quality dataset are passed to the models and the times are recorded. A plot for each model is generated that will be shown in the r code.
+
+```{r GridSearch, echo=FALSE, message=FALSE}
+grid_search <- data.frame(
+  dataset = c("Iris", "Adult", "Wine Quality", "",""),
+  test_size = c(0.1, 0.15, 0.2, "", ""),
+  max_depth = c(2, 5, 10, 100, 1000),
+  min_samples_split = c(2, 10, 100, "", "")
+)
+  knitr::kable(grid_search, align = "lccc", caption = "Different parameters for decision tree") %>%
+  kable_styling(position = "center")
+```
+
+
+# Results
+
+```{r, echo=FALSE, message=FALSE}
+my_result <- read.csv("my_result.csv")
+skl_result <- read.csv("skl_result.csv")
+```
+
+In this section, the results of the models are compared against each other. To start off, we fit a linear regression model with all possible variables to estimate the training time for both models, and then use backward selection to drop non-significant variables from the model and reach a decent model describing training time:
+
+```{r, echo=FALSE, message=FALSE}
+my_training_time <- lm(training_time ~ max_depth+min_samples_split+sample_size+test_size, data=my_result)
+
+skl_training_time <- lm(training_time ~ max_depth+min_samples_split+sample_size+test_size, data=skl_result)
+
+```
+
+```{r, echo=FALSE, message=FALSE}
+drop1(my_training_time, test = "F")# based on F-test of the ratio of two MSE
+drop1(skl_training_time, test = "F")
+```
+By the p_value, we can conclude that in both models, sample_size and max_depth seem to be important. On the other hand, we can drop min_samples_split from both models since the p_value is more than 0.05 (under 5% confidence). So we drop min_samples_split and do the process again:
+
+```{r, echo=FALSE, message=FALSE}
+my_training_time <- lm(training_time ~ max_depth+sample_size+test_size, data=my_result)
+
+skl_training_time <- lm(training_time ~ max_depth+sample_size+test_size, data=skl_result)
+
+drop1(my_training_time, test = 'F')
+drop1(skl_training_time, test = 'F')
+```
+
+With the same explanation as above, we can conclude that test_size in sklearn's model can be dropped. However, it seems like under 5% confidence, we cannot remove this variable from our model's equation for estimating training time. This implies that our model's training time depends on the training size more than the sklearn's model. Since the effect of sample_size seems to be significant, the interaction between sample_size and other existing variables in the models will be added to both models and we will analyze the result:
+
+```{r, echo=FALSE, message=FALSE}
+my_training_time <- lm(training_time ~ sample_size + max_depth:sample_size + test_size:sample_size + test_size + max_depth, data=my_result)
+skl_training_time <- lm(training_time ~ sample_size + max_depth:sample_size + max_depth, data=skl_result)
+
+summary(my_training_time)
+summary(skl_training_time)
+```
+ It is apparent that our guess was right and other variables' interaction with sample_size is more affecting the training time than the variables themselves As well as this, intercept seems to be redundant in both models. After dropping non significant variables and the intercept, the following equations are obtained:\newline
+ 
+```{r, echo=FALSE, message=FALSE}
+my_training_time <- lm(training_time ~ sample_size + max_depth:sample_size + test_size:sample_size + 0, data=my_result)
+skl_training_time <- lm(training_time ~ sample_size + max_depth:sample_size + 0, data=skl_result)
+
+summary(my_training_time)
+summary(skl_training_time)
+```
+
+Our implementation: 
+$$TrainingTime = 4.139e-05SampleSize + 1.325e-08SampleSize:MaxDepth + -7.288e-05SampleSize:TestSize$$ 
+Sklearn's implementation:
+$$TrainingTime = 4.319e-08SampleSize + 4.280e-11SampleSize:MaxDepth$$
+ 
+ By the value of Multiple R-squared, it can be seen that 94% of the variance of the time of our model is explained by this linear model. In addition, by p_value we can understand that sample_size plays the most important role in determining the training time. Training time gets higher with an increase in sample_size and max_depth, but it has a negative correlation with test_size (which means a positive correlation with training_size).
+ With the same explanation, this linear model can explain 86% of the variance of training time of sklearn's model. Again for this model, sample_size plays an important role. However, the coefficient of this variable is almost 1000 times less than in our implementation, which means that sklearn's model is less sensitive to the size of the data in hand and is faster.
+
+```{r myTime, out.width="60%", fig.align="center", fig.cap="time against size of data"}
+knitr::include_graphics("my_time_vs_sample_size.png")
+```
+```{r sklTime, out.width="60%", fig.align="center", fig.cap="time against size of data"}
+knitr::include_graphics("skl_time_vs_sample_size.png")
+```
+
+
+Considering the Wine dataset as an example, we took different samples from it with different sizes in the python code. It can be seen in Figures \@ref(fig:myTime) and \@ref(fig:sklTime) that training time has a linear relationship with sample size as obtained in previous section. The only difference is the coefficient of this variable, which is almost 1000 times more in our implemented mode. However, the prediction time does not seem to be significantly affected by sample size. \newline
+We will move on to find a linear regression model to estimate prediction time based on given parameters. The method here is again backward selection. We start with complete model and drop features one by one based on the significance of their p_value. We do not repeat the code here and just show the final result:
+
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+my_pred_time <- lm(prediction_time ~ max_depth+min_samples_split+sample_size+test_size, data=my_result)
+
+skl_pred_time <- lm(prediction_time ~ max_depth+min_samples_split+sample_size+test_size, data=skl_result)
+```
+
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+drop1(my_pred_time, test = "F")
+drop1(skl_pred_time, test = "F")
+```
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+my_pred_time <- lm(prediction_time ~ max_depth + sample_size + test_size, data=my_result)
+
+skl_pred_time <- lm(prediction_time ~ min_samples_split + sample_size + test_size, data=skl_result)
+
+drop1(my_pred_time, test = "F")
+drop1(skl_pred_time, test = "F")
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+skl_pred_time <- lm(prediction_time ~ sample_size + test_size, data = skl_result)
+drop1(skl_pred_time, test = "F")
+```
+```{r, echo=FALSE, message=FALSE}
+my_pred_time <- lm(prediction_time ~  max_depth:sample_size + sample_size:test_size + 0, data=my_result)
+
+skl_pred_time <- lm(prediction_time ~ test_size + log(sample_size) + sample_size:test_size + 0, data = skl_result)
+
+
+summary(my_pred_time)
+summary(skl_pred_time)
+```
+
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+my_pred_time <- lm(prediction_time ~  max_depth:sample_size + sample_size:test_size + 0, data=my_result)
+add1(my_pred_time, 
+     scope = prediction_time ~ max_depth:sample_size + sample_size:test_size + max_depth + sample_size + log(sample_size) + test_size,
+     test = "F")
+
+# Seems that no further feature can be added and this is our final model. 
+```
+After backward and forward selection and a bit of trial and errors, the above models are suggested to estimate prediction time for both decision trees based on given variables. It is apparent that for both models, the interaction between sample_size and test_size plays an important role (look at the p_value). In Sklearn's implementation, the logarithm of sample_size is the next factor. However, in our implementation, the interaction between sample_size and max_depth comes second. It might imply that library's tree is more balanced and its depth is around the logarithm of the whole sample_size, which is not the case in our implementation. The equations of prediction time for both models is as follows.
+Our implementation: 
+$$PredictionTime = 1.719e-11MaxDepth:SampleSize + 8.297e-08SampleSize:TestSize$$ 
+Sklearn's implementation:
+$$PredictionTime = 5.695e-09SampleSize:TestSize + 1.223e-04log(SampleSize) -3.301e-03TestSize$$
+After fitting a linear model to understand the relation between time and the parameters, we move on to compare training and prediction time for both models together and see if there is a significant difference between them. For this aim, paired t-test is applied. (because both sets of times were measured under the same settings in terms of sample size and hyperparameters.)
+The null hypothesis is that there is no difference in the mean of times for those two models. Therefore, we subtract the two lists of times and test if the mean significantly differs from 0 or not. 
+
+```{r, echo=FALSE, message=FALSE}
+# First need to check the equality of variances 
+my_ttime = my_result['training_time']
+my_ptime = my_result['prediction_time']
+skl_ttime = skl_result['training_time']
+skl_ptime = skl_result['prediction_time']
+
+train_diffs = my_ttime - skl_ttime
+pred_diffs = my_ptime - skl_ptime
+n = length(unlist(train_diffs)) #135
+
+t.test(unlist(my_ttime), unlist(skl_ttime), paired = TRUE, alternative = "two.sided")
+
+t.test(unlist(my_ptime), unlist(skl_ptime), paired = TRUE, alternative = "two.sided")
+
+```
+T-value for the training times and prediction times are 7.798 and 6.124, respectively. However, the critical t-value under 134 degrees of freedom and 5% confidence is 1.978. Since the t-value is much more than 1.978, we can reject the null hypothesis for both t-tests, which means that there is a significant difference between training and prediction time of our implemented model with those times of the Sklearn's model. As we saw before, the equations are almost similar (for example both models' training time depends linearly on the data size), but the coefficients of our model is notably larger.
+
+```{r, echo=FALSE, message=FALSE}
+# extract f1 score for both models 
+my_f1 = my_result['f1']
+skl_f1 = skl_result['f1']
+
+f1_diffs = my_f1 - skl_f1
+
+t.test(unlist(my_f1), unlist(skl_f1), paired = TRUE, alternative = "two.sided")
+
+```
+To compare the scores achieved by the two decision trees, we take f1-score as a candidate. It is the combination of precision and recall, and seems a resonable choice to analyse.
+Although the t-test reports that the mean of f1-scores for our model and Sklearn's are not the same and differ, the mean of their difference is 0.008. It shows that in terms of goodness of fit, our model is almost as good as the library's decision tree, since 0.008 is a very small difference in terms of f1-score. \newline 
+In Figures \@ref(fig:MaxDepthF1), \@ref(fig:TestSizeF1) and \@ref(fig:MinSamplesSplitF1) the effect of hyperparameters on both models can be seen (dashed line belongs to library's implementation). Overall, we can see that both models change in the same way for Adult and Iris datasets. On Wine Quality dataset, the value of f1-score almost change in the same way for both models, however, it is higher in Sklearn's implementation.
+
+```{r MaxDepthF1, echo=FALSE, fig.cap="F1 - Max Depth", out.width="60%", fig.align = "center"}
+my_max_depth_f1 = filter(my_result, test_size==0.2 & min_samples_split==2)
+skl_max_depth_f1 = filter(skl_result, test_size==0.2 & min_samples_split==2)
+
+agg_f1 <- data.frame(dataset=list(my_max_depth_f1['dataset']),
+                        max_depth=list(my_max_depth_f1['max_depth']),
+                         my_f1=list(my_max_depth_f1['f1']),
+                         skl_f1=list(skl_max_depth_f1['f1']))
+# Plot 
+ggplot(data=agg_f1) + 
+  geom_line(aes(x=max_depth, y=f1, color=dataset)) + 
+  geom_line(aes(x=max_depth, y=f1.1, color=dataset), linetype="dashed")
+
+```
+```{r TestSizeF1, echo=FALSE, fig.cap="F1 - Test Size", out.width="60%", fig.align = "center"}
+my_test_size_f1 = filter(my_result, max_depth==1000 & min_samples_split==2)
+skl_test_size_f1 = filter(skl_result, max_depth==1000 & min_samples_split==2)
+
+agg_f1 <- data.frame(dataset=list(my_test_size_f1['dataset']),
+                        test_size=list(my_test_size_f1['test_size']),
+                         my_f1=list(my_test_size_f1['f1']),
+                         skl_f1=list(skl_test_size_f1['f1']))
+# Plot 
+ggplot(data=agg_f1) + 
+  geom_line(aes(x=test_size, y=f1, color=dataset)) + 
+  geom_line(aes(x=test_size, y=f1.1, color=dataset), linetype="dashed")
+```
+```{r MinSamplesSplitF1, echo=FALSE, fig.cap="F1 - Min Samples Split", out.width="60%", fig.align = "center"}
+my_min_samples_split_f1 = filter(my_result, max_depth==1000 & test_size==0.2)
+skl_min_samples_split_f1 = filter(skl_result, max_depth==1000 & test_size==0.2)
+
+agg_f1 <- data.frame(dataset=list(my_min_samples_split_f1['dataset']),
+                        test_size=list(my_min_samples_split_f1['min_samples_split']),
+                         my_f1=list(my_min_samples_split_f1['f1']),
+                         skl_f1=list(skl_min_samples_split_f1['f1']))
+# Plot 
+ggplot(data=agg_f1) + 
+  geom_line(aes(x=min_samples_split, y=f1, color=dataset)) + 
+  geom_line(aes(x=min_samples_split, y=f1.1, color=dataset), linetype="dashed")
+```
+
+# Discussion
+As it was seen in the previous section, the size of the dataset (sample_size) and max_depth determine the training time for both models. However, the coefficients of Sklearn's model is almost 1000 times smaller than those of our model. The reason behind this might be about the optimizations implemented in Sklearn's model, such as multi-processing. When the data is split at each step, the left and right children of that node can continue the process of training simultaneously. In this way, we can run the training method on two CPUs, dividing the training time in half. If we have enough ressources to do this at further steps as well, training time would decrease significantly. \newline 
+We saw that in both models, prediction time does not change significantly with sample_size. The most predictive factor in both models were the interaction between sample_size and test_size, which is reasonable because we only predict the test_size portion of the sample_size. However, it seems like Sklearn's decision tree is more balanced, since its prediction time changes with the logarithm of data size. \newline
+Although there is a significant difference between the training and prediction time of the two models, the machine learning metrics do not differ significantly. F1-score was examined to compare the performance of the models on three different datasets and although the t-test reports a significant difference between the two models, the mean difference of the models in terms of f1-score is 0.008. As it was shown in the graphs, models' performance differ only on Wine Quality dataset, which is probably caused by the imbalanced classes.
+
+# Conclusion 
+In this assignment, a decision tree was implemented from scratch. It was trained on three datasets with notably different sizes and different feature types (e.g. real, integer and categorical). In addition, different sets of hyperparameters were used to test both models under different settings. The performance in terms of machine learning aspects such as f1-score was almost the same as the decision tree implemented in Sklearn library. However, in terms of time, it was significantly slower than library's implementation. With multi-processing and distributing the training phase on several CPUs we can improve the time of our model. 
